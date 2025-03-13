@@ -8,6 +8,12 @@
 
 Write-Host "Starte das Projekt.. "
 
+Invoke-WebRequest `
+  -Uri "https://drive.google.com/uc?export=download&id=1uWBEeyzV1k4WUtaumbpYdq_INT3qejCn" `
+  -OutFile ".\Docker\mongo-seed\mongo-seed.tar.gz"
+
+Write-Host "mongo-seed.tar.gz wurde erfolgreich heruntergeladen."
+
 # 1) Alte Container + Volumes entfernen
 Write-Host "Entferne alte Container/Volumes (docker-compose down -v)..."
 docker-compose down -v
