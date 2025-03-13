@@ -1,0 +1,10 @@
+mytoken.pat
+/Docker/mongo-seed/mongo-seed.tar.gz
+mongo-seed/mongo-dump/dump/ghcnd_database/stations_monthly.bson.gz
+
+# MongoDB Dumps (aber wir wollen BSON-Dateien tracken!)
+mongo-seed/mongo-dump/*
+!mongo-seed/mongo-dump/dump/
+!mongo-seed/mongo-dump/dump/ghcnd_database/
+!mongo-seed/mongo-dump/dump/ghcnd_database/*.bson
+!mongo-seed/mongo-dump/dump/ghcnd_database/*.json

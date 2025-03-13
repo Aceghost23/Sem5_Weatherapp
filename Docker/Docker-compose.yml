@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  mongodb:
+    build:
+      context: .
+      dockerfile: Dockerfile-mongo
+    container_name: mongodb_container
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ghcnd_database
+    restart: unless-stopped
+
+    # =========== HEALTHCHECK ===========
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 20s       
+      timeout: 10s        
+      retries: 40         
+      start_period: 60s  
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Docker/Dockerfile
+    container_name: backend_container
+    depends_on:
+      mongodb:
+        # => Backend erst starten, wenn mongodb "healthy"
+        condition: service_healthy
+    environment:
+      - MONGO_URI=mongodb://mongodb_container:27017/ghcnd_database
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+
+
+
+
+
+

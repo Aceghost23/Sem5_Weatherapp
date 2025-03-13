@@ -1,0 +1,27 @@
+FROM mongo:latest
+
+RUN apt-get update && \
+    apt-get install -y mongodb-database-tools && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV MONGO_INITDB_DATABASE=ghcnd_database
+
+COPY mongo-seed/mongo-seed.tar.gz /docker-entrypoint-initdb.d/mongo-seed.tar.gz
+
+RUN mkdir -p /tmp/mongo-seed && chown -R mongodb:mongodb /tmp/mongo-seed
+
+RUN echo "#!/bin/bash \n\
+tar -xzf /docker-entrypoint-initdb.d/mongo-seed.tar.gz --no-same-owner --no-same-permissions -C /tmp/mongo-seed && \n\
+echo \"[Mongo Init] Entpackt, starte Restore ...\" && \n\
+# Falls dein Archiv direkt 'ghcnd_database/' enthält (ohne 'mongo-dump/'-Oberordner):\n\
+mongorestore --drop --dir=/tmp/mongo-seed/my_new_dump/ghcnd_database --db ghcnd_database && \n\
+echo \"[Mongo Init] Import fertig.\"\n" \
+> /docker-entrypoint-initdb.d/00_import.sh
+
+RUN chmod +x /docker-entrypoint-initdb.d/00_import.sh
+
+EXPOSE 27017
+
+
+
+

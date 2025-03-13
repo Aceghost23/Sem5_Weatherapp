@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Weather Stations with Interactive Map</title>
+
+  <!-- Leaflet & MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+
+  <!-- Leaflet & MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* Grundlegende Resets */
+    * {
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%; 
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+    }
+
+    /* =========== TOP CONTROLS =========== */
+    .top-controls {
+      width: 100%;
+      background-color: #fff;
+      padding: 10px 20px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      z-index: 9999;
+    }
+    fieldset {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    fieldset legend {
+      font-weight: bold;
+      padding: 0 5px;
+    }
+    fieldset label {
+      margin-right: 2px;
+    }
+    fieldset input {
+      width: 60px; 
+      height: 25px; 
+      font-size: 14px;
+    }
+    fieldset button {
+      height: 30px; 
+      font-size: 14px;
+      cursor: pointer;
+      background: #007bff; 
+      color: #fff; 
+      border: none;
+      border-radius: 3px;
+      padding: 0 8px;
+    }
+    fieldset button:hover {
+      opacity: 0.9;
+    }
+
+    /* =========== MAP =========== */
+    #map {
+      width: 100%;
+      height: 60%;
+    }
+
+    /* =========== STATIONSLISTE =========== */
+    #stationsList {
+      padding: 20px;
+      height: calc(40% - 20px);
+      overflow-y: auto;
+      background: #fff;
+    }
+    .station-table-container {
+      overflow-y: auto;
+      max-height: 300px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .station-table-container table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .station-table-container th {
+      background-color: #007bff;
+      color: #fff;
+      padding: 10px;
+      text-align: left;
+    }
+    .station-table-container td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    .station-table-container tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    .station-table-container tr:hover {
+      background-color: #e8f2ff;
+    }
+
+    /* =========== LOADING OVERLAY =========== */
+    #loadingOverlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(255,255,255,0.7);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+    .spinner {
+      border: 10px solid #f3f3f3;
+      border-top: 10px solid #3498db;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* =========== TAB + TABS-STYLE =========== */
+    .tab-buttons {
+      margin-bottom: 8px;
+      display: flex;
+      gap: 5px;
+    }
+    .tab-buttons button {
+      padding: 4px 8px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: #eee;
+    }
+    .tab-buttons button:hover {
+      background: #ddd;
+    }
+    .popup-closebtn {
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      color: #666;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .popup-table thead th {
+      position: sticky;
+      top: 0;
+      background-color: #f4f4f4;
+      z-index: 2;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Lade-Overlay -->
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Gemeinsamer Suchbereich -->
+  <div class="top-controls">
+    <fieldset>
+      <legend>Search</legend>
+      <label for="radius">Radius (km):</label>
+      <input type="number" id="radius" value="50" min="1" />
+      <label for="maxStations">Max Stations:</label>
+      <input type="number" id="maxStations" value="10" min="1" />
+      <label for="searchLat">Lat:</label>
+      <input type="number" id="searchLat" step="0.0001" placeholder="optional" />
+      <label for="searchLng">Lng:</label>
+      <input type="number" id="searchLng" step="0.0001" placeholder="optional" />
+      <label for="yearStart">Year Start:</label>
+      <input type="number" id="yearStart" placeholder="optional" />
+      <label for="yearEnd">Year End:</label>
+      <input type="number" id="yearEnd" placeholder="optional" />
+      <button onclick="applySearch()">Apply</button>
+      <button onclick="resetSearch()">Reset</button>
+    </fieldset>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Stations List -->
+  <div id="stationsList">
+    <h3>Stations</h3>
+    <div class="station-table-container">
+      <table id="stationTable" class="station-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Start Year</th>
+            <th>End Year</th>
+            <th>Distance (km)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // ---------------------------------------
+    // Leaflet + MarkerCluster
+    // ---------------------------------------
+    var map = L.map("map").setView([51.505, -0.09], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(map);
+
+    var markers = L.markerClusterGroup();
+    var currentTableData = [];
+
+    // Globale Year Range
+    var globalYearStart = null;
+    var globalYearEnd   = null;
+
+    // Radius
+    var radiusActive = false;
+    var currentRadiusCircle = null;
+    var currentCenterMarker = null;
+
+    // Marker/Popup
+    var selectedStation = null;
+    var selectedMarker  = null;
+
+    // Spinner
+    function showLoading() {
+      document.getElementById("loadingOverlay").style.display = "flex";
+    }
+    function hideLoading() {
+      document.getElementById("loadingOverlay").style.display = "none";
+    }
+
+    // ---------------------------------------
+    // Apply/Reset Search
+    // ---------------------------------------
+    function applySearch() {
+      let radius   = parseFloat(document.getElementById("radius").value);
+      let maxSt    = parseInt(document.getElementById("maxStations").value, 10) || 10;
+      let lat      = parseFloat(document.getElementById("searchLat").value);
+      let lng      = parseFloat(document.getElementById("searchLng").value);
+      let yearSVal = document.getElementById("yearStart").value;
+      let yearEVal = document.getElementById("yearEnd").value;
+
+      // Year Range
+      if (yearSVal && yearEVal) {
+        globalYearStart = parseInt(yearSVal, 10);
+        globalYearEnd   = parseInt(yearEVal, 10);
+      } else {
+        globalYearStart = null;
+        globalYearEnd   = null;
+      }
+
+      // Koordinaten-Suche
+      if (!isNaN(lat) && !isNaN(lng)) {
+        removeRadius();
+        radiusActive = true;
+        showLoading();
+        let url = `/search_by_coords?lat=${lat}&lng=${lng}&radius=${radius}&limit=${maxSt}`;
+        if (globalYearStart !== null && globalYearEnd !== null) {
+          url += `&startYear=${globalYearStart}&endYear=${globalYearEnd}`;
+        }
+        fetch(url)
+          .then(r => {
+            if (!r.ok) throw new Error("Fehler /search_by_coords: " + r.statusText);
+            return r.json();
+          })
+          .then(data => {
+            if (!data.length) {
+              alert("Keine Stationen für die eingegebenen Koordinaten im angegebenen Radius gefunden.");
+              return;
+            }
+            currentTableData = data;
+            populateStationTable(data);
+            showStationsOnMap(data);
+            map.setView([lat, lng], 9);
+            drawRadiusAndFilter(lat, lng, data);
+          })
+          .catch(err => {
+            console.error("Fehler bei Koord-Suche:", err);
+            alert("Fehler bei Koord-Suche (siehe Konsole).");
+          })
+          .finally(() => hideLoading());
+      } else {
+        // => bounding box
+        handleMapMove();
+        alert("Klicke auf die Karte, um den Mittelpunkt des Radius zu setzen.");
+        radiusActive = true;
+        map.once("click", (e) => {
+          let clickedLat = e.latlng.lat;
+          let clickedLng = e.latlng.lng;
+          document.getElementById("searchLat").value = clickedLat.toFixed(4);
+          document.getElementById("searchLng").value = clickedLng.toFixed(4);
+          drawRadiusAndFilter(clickedLat, clickedLng, currentTableData);
+        });
+      }
+    }
+
+    function resetSearch() {
+      document.getElementById("radius").value     = "50";
+      document.getElementById("maxStations").value = "10";
+      document.getElementById("searchLat").value   = "";
+      document.getElementById("searchLng").value   = "";
+      document.getElementById("yearStart").value   = "";
+      document.getElementById("yearEnd").value     = "";
+
+      globalYearStart = null;
+      globalYearEnd   = null;
+
+      removeRadius();
+      handleMapMove();
+    }
+
+    // ---------------------------------------
+    // TABLE
+    // ---------------------------------------
+    function populateStationTable(data) {
+      var tableBody = document.querySelector("#stationTable tbody");
+      tableBody.innerHTML = "";
+      data.forEach(st => {
+        let row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${st.station_name || st.station_id}</td>
+          <td>${st.latitude}</td>
+          <td>${st.longitude}</td>
+          <td>${st.start_year}</td>
+          <td>${st.end_year}</td>
+          <td>${st.distance ? st.distance.toFixed(1) : "-"}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // ---------------------------------------
+    // SHOW STATIONS ON MAP
+    // ---------------------------------------
+    function showStationsOnMap(data) {
+      markers.clearLayers();
+      data.forEach(st => {
+        let marker = L.marker([st.latitude, st.longitude]);
+        marker.on("click", function() {
+          selectedStation = st;
+          selectedMarker  = marker;
+
+          // => Hole nur die Daten in der gewählten Range (sonst 1700..2025)
+          let sY = (globalYearStart !== null) ? globalYearStart : 1700;
+          let eY = (globalYearEnd   !== null) ? globalYearEnd   : 2025;
+
+          marker.bindPopup("<strong>Loading station data...</strong>", {
+            autoPan: true,
+            autoPanPadding: [30, 30],
+            closeOnClick: false,
+            autoClose: false,
+            keepInView: true,
+            minWidth: 720,
+            maxWidth: 720,
+            closeButton: false
+          }).openPopup();
+
+          fetchStationData(st, marker, sY, eY);
+
+        });
+        markers.addLayer(marker);
+      });
+      map.addLayer(markers);
+    }
+
+    // ---------------------------------------
+    // fetchStationData => user-defined range
+    // ---------------------------------------
+    async function fetchStationData(station, marker, startY, endY) {
+      try {
+        showLoading();
+        let url = `/station_data?station_id=${station.station_id}&startYear=${startY}&endYear=${endY}`;
+        let resp = await fetch(url);
+        hideLoading();
+        if (!resp.ok) throw new Error("Fehler /station_data: " + resp.statusText);
+
+        let resultData = await resp.json();
+        // => Füge "_yearlyArr" / "_seasonalArr" hinzu
+        resultData._yearlyArr   = resultData.yearlyAverages   || [];
+        resultData._seasonalArr = resultData.seasonalAverages || [];
+
+        let popupContent = createPopupTabs(station, resultData);
+        marker.setPopupContent(popupContent);
+
+        initChartInPopup(station, resultData, marker.getPopup());
+      } catch(err) {
+        console.error("fetchStationData Fehler:", err);
+        alert("Fehler /station_data (siehe Konsole)");
+      }
+    }
+
+    // ---------------------------------------
+    // CREATE POPUP TABS
+    // ---------------------------------------
+    function createPopupTabs(station, resultData) {
+      return `
+      <div style="width:720px;">
+        <div class="tab-buttons" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <button onclick="switchAllTabs('${station.station_id}', 'yearly')">Yearly</button>
+            <button onclick="switchAllTabs('${station.station_id}', 'season')">Seasonal</button>
+            <button onclick="switchAllTabs('${station.station_id}', 'graph')">Graph</button>
+          </div>
+          <!-- Stationsname rechts oben -->
+          <div style="font-size:14px; font-weight:bold; margin-right:10px;">
+            ${station.station_name || station.station_id}
+          </div>
+          <button class="popup-closebtn" onclick="closeMarkerPopup()">X</button>
+        </div>
+
+        <div id="yearly_${station.station_id}" class="tab-content active">
+          <h4>Yearly Data (Avg Tmin / Avg Tmax)</h4>
+          <div style="width:400px; max-height:200px; overflow-y:auto;">
+            ${buildYearlyTable(resultData._yearlyArr)}
+          </div>
+        </div>
+
+        <div id="season_${station.station_id}" class="tab-content">
+          <h4>Seasonal Data (Avg Tmin / Avg Tmax)</h4>
+          <div style="width:400px; max-height:200px; overflow-y:auto;">
+            ${buildSeasonalTable(resultData._seasonalArr)}
+          </div>
+        </div>
+
+        <div id="graph_${station.station_id}" class="tab-content">
+          <div id="chartDiv_${station.station_id}" 
+               style="border:1px solid #ccc; width:700px; height:320px; margin-top:5px;">
+          </div>
+        </div>
+      </div>
+      `;
+    }
+
+    function buildYearlyTable(yearlyArr) {
+      if (!yearlyArr.length) {
+        return "<p style='color:red'>No Yearly data found.</p>";
+      }
+      let rows = yearlyArr.map(y => `
+         <tr>
+            <td>${y.year}</td>
+            <!-- style="text-align:right;" sorgt für rechtsbündige Ausrichtung -->
+            <td style="text-align:right;">
+              ${typeof y.avgTmin === 'number' ? y.avgTmin.toFixed(1) : '-'}°C
+            </td>
+            <td style="text-align:right;">
+             ${typeof y.avgTmax === 'number' ? y.avgTmax.toFixed(1) : '-'}°C
+            </td>
+        </tr>
+      `).join("");
+      return `
+        <table class="popup-table" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Avg Tmin</th>
+              <th>Avg Tmax</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function buildSeasonalTable(seasonalArr) {
+      if (!seasonalArr.length) {
+        return "<p style='color:red'>No Seasonal data found.</p>";
+      }
+      const seasonOrder = { "Spring": 1, "Summer": 2, "Fall": 3, "Winter": 4 };
+      seasonalArr.sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return seasonOrder[a.season] - seasonOrder[b.season];
+      });
+      let rows = seasonalArr.map(s => `
+        <tr>
+          <td>${s.year}</td>
+          <td>${s.season}</td>
+          <td style="text-align:right;">${typeof s.avgTmin === 'number' ? s.avgTmin.toFixed(1) : '-'}°C</td>
+          <td style="text-align:right;">${typeof s.avgTmax === 'number' ? s.avgTmax.toFixed(1) : '-'}°C</td>
+        </tr>
+      `).join("");
+      return `
+        <table class="popup-table" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Season</th>
+              <th>Avg Tmin</th>
+              <th>Avg Tmax</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function switchAllTabs(stationId, target) {
+      let allTabs = [ `yearly_${stationId}`, `season_${stationId}`, `graph_${stationId}` ];
+      allTabs.forEach(id => document.getElementById(id)?.classList.remove("active"));
+      document.getElementById(`${target}_${stationId}`)?.classList.add("active");
+    }
+    function closeMarkerPopup() {
+      if (selectedMarker && selectedMarker._popup) {
+        selectedMarker.closePopup();
+      }
+    }
+
+    // ---------------------------------------
+    // initChartInPopup => yearList / seasonal
+    // ---------------------------------------
+    function initChartInPopup(station, resultData, popup) {
+      let container = popup._contentNode.querySelector(`#chartDiv_${station.station_id}`);
+      if (!container) return;
+
+      let yearlyArr   = resultData._yearlyArr   || [];
+      let seasonalArr = resultData._seasonalArr || [];
+
+      if (!yearlyArr.length && !seasonalArr.length) {
+        container.innerHTML = "<p style='color:red;'>No data for Graph!</p>";
+        return;
+      }
+
+      container.innerHTML = `<canvas id="chartCanvas_${station.station_id}" width="690" height="300"></canvas>`;
+      let canvas = container.querySelector("canvas");
+
+      // Yearly
+      let yearlyTmin = {};
+      let yearlyTmax = {};
+      yearlyArr.forEach(doc => {
+        yearlyTmin[doc.year] = doc.avgTmin;
+        yearlyTmax[doc.year] = doc.avgTmax;
+      });
+
+      let allYears = new Set();
+      yearlyArr.forEach(doc => allYears.add(doc.year));
+      seasonalArr.forEach(doc => allYears.add(doc.year));
+      let yearList = Array.from(allYears).sort((a,b) => a - b);
+
+      let yearlyTminLine = [];
+      let yearlyTmaxLine = [];
+      yearList.forEach(y => {
+        yearlyTminLine.push(yearlyTmin[y] ?? null);
+        yearlyTmaxLine.push(yearlyTmax[y] ?? null);
+      });
+
+      // Seasonal
+      let springTmin = {}, springTmax = {};
+      let summerTmin = {}, summerTmax = {};
+      let fallTmin   = {}, fallTmax   = {};
+      let winterTmin = {}, winterTmax = {};
+
+      seasonalArr.forEach(doc => {
+        if (doc.season === "Spring") {
+          springTmin[doc.year] = doc.avgTmin;
+          springTmax[doc.year] = doc.avgTmax;
+        } else if (doc.season === "Summer") {
+          summerTmin[doc.year] = doc.avgTmin;
+          summerTmax[doc.year] = doc.avgTmax;
+        } else if (doc.season === "Fall") {
+          fallTmin[doc.year]   = doc.avgTmin;
+          fallTmax[doc.year]   = doc.avgTmax;
+        } else if (doc.season === "Winter") {
+          winterTmin[doc.year] = doc.avgTmin;
+          winterTmax[doc.year] = doc.avgTmax;
+        }
+      });
+
+      let springTminLine = [], springTmaxLine = [];
+      let summerTminLine = [], summerTmaxLine = [];
+      let fallTminLine   = [], fallTmaxLine   = [];
+      let winterTminLine = [], winterTmaxLine = [];
+
+      yearList.forEach(y => {
+        springTminLine.push(springTmin[y] ?? null);
+        springTmaxLine.push(springTmax[y] ?? null);
+        summerTminLine.push(summerTmin[y] ?? null);
+        summerTmaxLine.push(summerTmax[y] ?? null);
+        fallTminLine.push(fallTmin[y] ?? null);
+        fallTmaxLine.push(fallTmax[y] ?? null);
+        winterTminLine.push(winterTmin[y] ?? null);
+        winterTmaxLine.push(winterTmax[y] ?? null);
+      });
+
+      new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: yearList,
+          datasets: [
+            {
+              label: "Yearly Avg Tmin",
+              data: yearlyTminLine,
+              borderColor: "red",
+              backgroundColor: "rgba(255,0,0,0.2)"
+            },
+            {
+              label: "Yearly Avg Tmax",
+              data: yearlyTmaxLine,
+              borderColor: "blue",
+              backgroundColor: "rgba(0,0,255,0.2)"
+            },
+            {
+              label: "Spring Avg Tmin",
+              data: springTminLine,
+              borderColor: "green",
+              backgroundColor: "rgba(0,255,0,0.2)",
+              hidden: true
+            },
+            {
+              label: "Spring Avg Tmax",
+              data: springTmaxLine,
+              borderColor: "lightgreen",
+              backgroundColor: "rgba(144,238,144,0.2)",
+              hidden: true
+            },
+            {
+              label: "Summer Avg Tmin",
+              data: summerTminLine,
+              borderColor: "orange",
+              backgroundColor: "rgba(255,165,0,0.2)",
+              hidden: true
+            },
+            {
+              label: "Summer Avg Tmax",
+              data: summerTmaxLine,
+              borderColor: "darkorange",
+              backgroundColor: "rgba(255,140,0,0.2)",
+              hidden: true
+            },
+            {
+              label: "Fall Avg Tmin",
+              data: fallTminLine,
+              borderColor: "purple",
+              backgroundColor: "rgba(128,0,128,0.2)",
+              hidden: true
+            },
+            {
+              label: "Fall Avg Tmax",
+              data: fallTmaxLine,
+              borderColor: "violet",
+              backgroundColor: "rgba(238,130,238,0.2)",
+              hidden: true
+            },
+            {
+              label: "Winter Avg Tmin",
+              data: winterTminLine,
+              borderColor: "cyan",
+              backgroundColor: "rgba(0,255,255,0.2)",
+              hidden: true
+            },
+            {
+              label: "Winter Avg Tmax",
+              data: winterTmaxLine,
+              borderColor: "navy",
+              backgroundColor: "rgba(0,0,128,0.2)",
+              hidden: true
+            }
+          ]
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: "Year" } },
+            y: { title: { display: true, text: "Temperature (°C)" } }
+          },
+          plugins: {
+            title: { display: true, text: "Average Temperatures [Chart.js]" },
+            tooltip: { mode: "index", intersect: false },
+            legend: { display: true }
+          },
+          interaction: { mode: "nearest", intersect: false }
+        }
+      });
+    }
+
+    // ---------------------------------------
+    // BOUNDING BOX
+    // ---------------------------------------
+    map.on("moveend", () => {
+      // Wiederhergestellt: Nicht neu laden, wenn Popup offen
+      if (!radiusActive && (!selectedMarker || !selectedMarker._popup || !selectedMarker._popup.isOpen())) {
+        handleMapMove();
+      }
+    });
+    function handleMapMove() {
+      showLoading();
+      let bounds = map.getBounds();
+      let sw = bounds.getSouthWest();
+      let ne = bounds.getNorthEast();
+
+      let url = `/stations_in_bounds?swLat=${sw.lat}&swLng=${sw.lng}&neLat=${ne.lat}&neLng=${ne.lng}`;
+      if (globalYearStart !== null && globalYearEnd !== null) {
+        url += `&startYear=${globalYearStart}&endYear=${globalYearEnd}`;
+      }
+      fetch(url)
+        .then(r => {
+          if (!r.ok) throw new Error("BBox-Request fehlgeschlagen");
+          return r.json();
+        })
+        .then(data => {
+          currentTableData = data;
+          populateStationTable(data);
+          showStationsOnMap(data);
+        })
+        .catch(err => console.error("BBox-Fetch Fehler:", err))
+        .finally(() => hideLoading());
+    }
+
+    // ---------------------------------------
+    // RADIUS
+    // ---------------------------------------
+    function drawRadiusAndFilter(centerLat, centerLng, data) {
+      document.getElementById("searchLat").value = centerLat.toFixed(4);
+      document.getElementById("searchLng").value = centerLng.toFixed(4);
+
+      if (currentRadiusCircle) map.removeLayer(currentRadiusCircle);
+      if (currentCenterMarker) map.removeLayer(currentCenterMarker);
+
+      let rKm = parseFloat(document.getElementById("radius").value) || 50;
+
+      currentRadiusCircle = L.circle([centerLat, centerLng], {
+        radius: rKm * 1000,
+        color: "blue",
+        fillColor: "#add8e6",
+        fillOpacity: 0.5
+      }).addTo(map);
+
+      currentCenterMarker = L.circleMarker([centerLat, centerLng], {
+        radius: 5,
+        color: "red",
+        fillColor: "red",
+        fillOpacity: 1
+      }).addTo(map);
+
+      let filtered = data.map(st => {
+        var d = getDistance(centerLat, centerLng, parseFloat(st.latitude), parseFloat(st.longitude));
+        return { ...st, distance: d };
+      }).filter(st => st.distance <= rKm);
+
+      filtered.sort((a,b) => a.distance - b.distance);
+
+      let maxSt = parseInt(document.getElementById("maxStations").value, 10) || 10;
+      var limited = filtered.slice(0, maxSt);
+
+      if (!limited.length) {
+        alert("Keine Stationen im Radius gefunden. Bitte setze den Radius neu.");
+        if (currentRadiusCircle) { map.removeLayer(currentRadiusCircle); currentRadiusCircle = null; }
+        if (currentCenterMarker) { map.removeLayer(currentCenterMarker); currentCenterMarker = null; }
+        return;
+      }
+      currentTableData = limited;
+      populateStationTable(limited);
+      showStationsOnMap(limited);
+    }
+
+    function removeRadius() {
+      radiusActive = false;
+      if (currentRadiusCircle) map.removeLayer(currentRadiusCircle);
+      if (currentCenterMarker) map.removeLayer(currentCenterMarker);
+      currentRadiusCircle = null;
+      currentCenterMarker = null;
+
+      document.getElementById("searchLat").value = "";
+      document.getElementById("searchLng").value = "";
+
+      handleMapMove();
+    }
+
+    // ---------------------------------------
+    // HAVERSINE
+    // ---------------------------------------
+    function getDistance(lat1, lon1, lat2, lon2) {
+      var R = 6371;
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLon = (lon2 - lon1) * Math.PI / 180;
+      var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+              Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+              Math.sin(dLon/2)*Math.sin(dLon/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+  </script>
+</body>
+</html>
